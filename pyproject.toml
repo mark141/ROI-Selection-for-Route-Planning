@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "mn-bachelor-thesis"
+version = "0.1.0"
+description = "Bachelor Thesis: Adaptive Region of Interest Selection Under Dynamic Constraints for Efficient Route Planning"
+authors = ["Markus Nagel <mar.nag@gmx.net>"]
+maintainers = ["Markus Nagel <mar.nag@gmx.net>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.12,<4"
+osmnx = "^2.0.6"
+matplotlib = "^3.10.7"
+contextily = "^1.6.2"
+scikit-learn = "^1.7.2"
+openrouteservice = "^2.3.3"
+
+[tool.poetry.group.dev.dependencies]
+pre-commit = "^3.4.0"
+pylint = "^3.0.1"
+black = "^23.9.1"
+pytest = "^7.4.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
