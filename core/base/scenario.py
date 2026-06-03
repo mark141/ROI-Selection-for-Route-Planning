@@ -1,8 +1,9 @@
-from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Dict, Tuple
 
 
-class Scenario(ABC):
-
-    @abstractmethod
-    def load(self):
-        pass
+@dataclass
+class Scenario:
+    start: Tuple[float, float]
+    goal: Tuple[float, float]
+    constraints: Dict
