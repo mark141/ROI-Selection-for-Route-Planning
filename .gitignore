@@ -1,5 +1,7 @@
 .idea
 
-.data.maps
-.data.scenarios
-.data.weather
+data/maps/.
+data/scenarios/.
+data/weather/.
+
+utils/config.py
