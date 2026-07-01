@@ -36,9 +36,8 @@ ROI-Selection-for-Route-Planning
 │   │
 │   ├── roi/
 │   │   ├── __init__.py
-│   │   ├── dynamic_roi.py
-│   │   ├── static_roi.py
-│   │   └── heuristic_roi.py
+│   │   ├── roi.py
+│   │   └── roi_iterator.py
 │   │
 │   ├── constraints/
 │   │   ├── __init__.py

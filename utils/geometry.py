@@ -1,9 +1,11 @@
-# gemoetry utility functions
+# geometry utility functions
 import numpy as np
 import geopandas as gpd
 import math
-from shapely.geometry import Polygon, Point
+from shapely.geometry import box, LineString, Polygon, Point
+from shapely.ops import nearest_points, unary_union
 from typing import Tuple, List
+from geopy.distance import geodesic
 
 
 def interpolate_points(
@@ -146,3 +148,183 @@ def build_oriented_rectangle(
         geometry=[polygon],
         crs="EPSG:4326",
     )
+
+
+def haversine(lat1, lon1, lat2, lon2) -> float:
+    """
+    Calculate the haversine distance between two points.
+    :param lat1: latitude of first point
+    :param lon1: longitude of first point
+    :param lat2: latitude of second point
+    :param lon2: longitude of second point
+    :return: distance between two points in km
+    """
+    r = 6371.0  # km
+
+    lat1 = np.radians(lat1)
+    lon1 = np.radians(lon1)
+    lat2 = np.radians(lat2)
+    lon2 = np.radians(lon2)
+
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+
+    a = (
+        np.sin(dlat / 2) ** 2
+        + np.cos(lat1)
+        * np.cos(lat2)
+        * np.sin(dlon / 2) ** 2
+    )
+
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+
+    return r * c
+
+
+# use this with : reachable_df = df[df.apply(reachable, axis=1)]
+def reachable(row, start, dest, departure_time, avg_speed=80):
+    """
+    Determine whether a weather point is reachable from the trip origin at
+    the given timestamp using a constant average driving speed.
+
+     A weather point is considered reachable if:
+      1. Its distance from the start location is less than or equal to the
+         maximum distance that could have been driven since `departure_time`.
+      2. It is closer to the destination than the start location, preventing
+         points located behind the direction of travel from being selected.
+
+    :param row: pd.Series - A row from the weather DataFrame containing at least the columns `time`, `lat`, and `lon`.
+    :param start: (tuple[float, float]) - Latitude and longitude of the departure location as `(lat, lon)`.
+    :param dest: (tuple[float, float]) - Latitude and longitude of the destination as `(lat, lon)`.
+    :param departure_time: pd.Series - The timestamp of the departure location as `time`.
+    :param avg_speed: (float, optional) - Assumed constant driving speed in km/h. Defaults to 80.
+    :return: bool - `True` if the weather point is considered reachable at the given time, otherwise `False`.
+    """
+
+    start_to_dest = geodesic(start, dest).km
+    hours = (row["time"] - departure_time).total_seconds() / 3600
+
+    if hours < 0:
+        return False
+
+    radius = hours * avg_speed
+
+    point = (row["lat"], row["lon"])
+
+    dist_from_start = geodesic(start, point).km
+    dist_to_dest = geodesic(point, dest).km
+
+    return (
+        dist_from_start<= radius and
+        dist_to_dest < start_to_dest
+    )
+
+
+def precipitation_regions(df, max_precip, spacing_deg):
+    # keep only "good" weather cells
+    df = df[df["precipitation"] < max_precip].copy()
+
+    # increase spacing by 5 %
+    side = spacing_deg * 1.05
+    half = side / 2
+
+    # create one square per weather point
+    geometry = [
+        box(
+            lon - half,
+            lat - half,
+            lon + half,
+            lat + half,
+        )
+        for lat, lon in zip(df["lat"], df["lon"])
+    ]
+
+    gdf = gpd.GeoDataFrame(df, geometry=geometry, crs="EPSG:4326")
+
+    # merge touching/overlapping squares
+    merged = gdf.geometry.union_all()      # GeoPandas >=1.1
+    # alternatively: gdf.geometry.unary_union
+
+    return merged
+
+
+def find_region(regions, point):
+    """
+    Return the polygon containing the given point, or None if the point
+    is not contained in any region.
+
+    :param regions: Polygon | MultiPolygon
+        Connected regions.
+    :param point: tuple[float, float]
+        (lat, lon)
+    """
+    # (lon, lat)
+    point = Point(point[1], point[0])
+
+    polygons = getattr(regions, "geoms", [regions])
+
+    for poly in polygons:
+        if poly.covers(point):
+            return poly
+
+    return None
+
+
+def same_region(regions, point_a, point_b):
+    """
+    Return True if both points lie in the same connected region.
+
+    :param regions: Polygon | MultiPolygon
+        Connected precipitation regions.
+    :param point_a: tuple[float, float]
+        (lat, lon)
+    :param point_b: tuple[float, float]
+        (lat, lon)
+    :return: boolean
+    """
+    region = find_region(regions, point_a)
+
+    if region is None:
+        return False
+
+    return region.covers(Point(point_b[1], point_b[0]))
+
+
+def to_simple_polygon(poly, bridge_width):
+    """
+    Convert a polygon with holes into a simple polygon by connecting every
+    hole to the exterior using the smallest possible bridge.
+
+    Parameters
+    ----------
+    poly : shapely.Polygon
+    bridge_width : float
+        Width of the bridge (e.g. 0.1 * weather_grid_spacing).
+
+    Returns
+    -------
+    shapely.Polygon
+    """
+    result = poly
+
+    while result.interiors:
+
+        # take first remaining hole
+        hole = LineString(result.interiors[0])
+
+        # nearest points between hole and outer boundary
+        p_outer, p_hole = nearest_points(result.exterior, hole)
+
+        # create a narrow bridge
+        bridge = LineString([p_outer, p_hole]).buffer(
+            bridge_width / 2,
+            cap_style="square"
+        )
+
+        # add the bridge to the polygon
+        result = unary_union([result, bridge])
+
+        # rebuild using only exterior
+        result = Polygon(result.exterior)
+
+    return result

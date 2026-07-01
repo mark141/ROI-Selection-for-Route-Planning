@@ -56,10 +56,12 @@ class WeatherConstraint(Constraint):
             prec = loc_resp["hourly"]["precipitation"]
             cloudcover = loc_resp["hourly"]["cloudcover"]
             temperature_2m = loc_resp["hourly"]["temperature_2m"]
+            elevation = loc_resp["elevation"]
 
             for t_idx, t in enumerate(times):
                 records.append({
                     "time": t,
+                    "elevation": elevation,
                     "lat": lat,
                     "lon": lon,
                     "precipitation": prec[t_idx],
@@ -86,8 +88,6 @@ class WeatherConstraint(Constraint):
         # default value is 2 -> TODO: maybe use without?
         max_rain = context.get("max_rain", 2)
 
-        # TODO: LOGIC WRONG: time is NEEDED
-        #  since we got the same locations for every hour
         distances = (df["lat"] - lat) ** 2 + (df["lon"] - lon) ** 2
         clostest_idx = distances.idxmin()
         closest_row = df.loc[clostest_idx]

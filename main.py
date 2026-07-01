@@ -1,7 +1,9 @@
+import pandas as pd
+
 from core.constraints.weather_constraint import WeatherConstraint
-from core.roi.static_roi import ROISelectorFactory
+from core.roi.roi import ROISelectorFactory
 from core.base.scenario import Scenario
-from core.roi.dynamic_roi import DynamicROISelector
+from core.roi.roi_iterator import ROIIterator
 from core.planning.route_manager import RouteManager
 from utils.graph_utils import OSRMRoutingAPI
 
@@ -14,13 +16,20 @@ def main():
     # start = (45.0703, 7.6869)  # Turin
     # goal = (44.4949, 11.3426)  # Bologna
 
+    departure_time = pd.Timestamp("2026-06-01 12:06")
+
     constraints = {
+        # maximum precipitation in mm
         "max_rain": 1.5,
         # has to be in range 3 month before TODAY
         "start_date": "2026-06-01",
         # has to be in range 15 days after TODAY
         "end_date": "2026-06-02",
-        "buffer": 0.05    # Buffer % dependant on route length
+        "buffer": 0.05,    # Buffer % dependant on route length
+        # departure // timeframe
+        "mode": "departure",
+        # will get rounded to "full hours"
+        "departure_time": departure_time,
     }
 
     # set dataclass inputs
@@ -50,15 +59,30 @@ def main():
     )
 
     # ROI generation/iteration
-    roi_selector = DynamicROISelector(
-        constraints=[weather_constraint]
+    # what it does?
+    # class - takes start_roi & weather_constraints & scenario as input
+    # also need to declare if start-now or timeframe calcs should be done
+    # has functions:
+    # - iterate - always does 1 iteration step, whereas the first iteration step is the initial generation
+    # - a function that calls iterate and you can tell how many iterations should be done
+    # -
+    # - helper functions that are getting called in the iterate
+    roi_iterator = ROIIterator(
+        initial_roi=init_roi,
+        constraints={"weather_constraint": weather_constraint},
+        scenario=scenario,
+        mode=scenario
     )
-    # TODO: make generation/iteration
-    result = roi_selector.generate(scenario)
+    # default 5 runs
+    # all steps are saved in the class roi_iterator
+    roi = roi_iterator.run_iterations()
 
-    # TODO: save all iteration steps in the class
     print("ROI RESULT")
-    print(result["roi"])
+    print(roi)
+    # TODO: display ROI and basemap and start + end
+    #   optional: haversine graph
+    #   optional: initial_roi
+    #   optional: route
 
     route_manager = RouteManager(
         # TODO: needs update! -> use ORSRoutingAPI
@@ -81,5 +105,5 @@ def main():
     print("ROUTE")
     print(route)
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
