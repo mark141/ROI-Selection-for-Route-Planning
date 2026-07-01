@@ -1,9 +1,11 @@
 # geometry utility functions
 import numpy as np
+import pandas as pd
 import geopandas as gpd
 import math
 from shapely.geometry import box, LineString, Polygon, Point
-from shapely.ops import nearest_points, unary_union
+from shapely.ops import nearest_points, unary_union, transform
+from pyproj import Transformer
 from typing import Tuple, List
 from geopy.distance import geodesic
 
@@ -22,44 +24,36 @@ def interpolate_points(
 
 def grid_points_in_polygon(polygon, target_count):
     """
-    Generate a grid of equidistant points within the polygon,
-    then return approximately target_count points inside it.
-
-    Args:
-        polygon (shapely.geometry.Polygon): The polygon to fill.
-        target_count (int): Desired number of points.
-
-    Returns:
-        geopandas.GeoDataFrame: Points inside polygon (approx N).
-        spacing: spacing between points in degrees.
+    Stable square-grid (fishnet) generator in projected CRS.
+    Produces ~target_count equidistant points.
     """
+    to_utm = Transformer.from_crs(
+        "EPSG:4326", "EPSG:32632", always_xy=True
+    ).transform
+    to_wgs = Transformer.from_crs(
+        "EPSG:32632", "EPSG:4326", always_xy=True
+    ).transform
+    polygon_utm = transform(to_utm, polygon)
     # Get bounds of the polygon
-    minx, miny, maxx, maxy = polygon.bounds
+    minx, miny, maxx, maxy = polygon_utm.bounds
 
-    # Estimate initial spacing from area and target count
-    area = polygon.area
+    # Estimate initial spacing from area and target count in m² and m
+    area = polygon_utm.area
     spacing = np.sqrt(area / target_count)
 
-    # Adjust grid spacing until ~target_count available
-    for _ in range(100):  # max iterations to converge
-        # Build grid in bounding box
-        xs = np.arange(minx, maxx, spacing)
-        ys = np.arange(miny, maxy, spacing)
-        xx, yy = np.meshgrid(xs, ys)
-        pts = [Point(x, y) for x, y in zip(xx.ravel(), yy.ravel())]
+    # Build grid in bounding box
+    xs = np.arange(minx, maxx, spacing)
+    ys = np.arange(miny, maxy, spacing)
+    # xx, yy = np.meshgrid(xs, ys)
+    pts = [Point(x, y) for x in xs for y in ys if polygon_utm.contains(Point(x, y))]
 
-        # Keep only points inside polygon
-        pts_inside = [p for p in pts if polygon.contains(p)]
+    #
+    if len(pts) > target_count:
+        step = len(pts) / target_count
+        pts = [pts[int(i*step)] for i in range(target_count)]
 
-        # Check how many we have
-        n = len(pts_inside)
-        if abs(n - target_count) < target_count * 0.10:
-            # Good enough (within 10%)
-            break
-
-        # Adjust spacing based on difference
-        spacing *= np.sqrt(n / target_count)
-
+    # return to EPSG:4326
+    pts_inside = [transform(to_wgs, p) for p in pts]
     # Build GeoDataFrame
     gdf = gpd.GeoDataFrame(
         geometry=pts_inside,
@@ -182,7 +176,7 @@ def haversine(lat1, lon1, lat2, lon2) -> float:
 
 
 # use this with : reachable_df = df[df.apply(reachable, axis=1)]
-def reachable(row, start, dest, departure_time, avg_speed=80):
+def reachable(df, start, dest, departure_time, avg_speed=80):
     """
     Determine whether a weather point is reachable from the trip origin at
     the given timestamp using a constant average driving speed.
@@ -193,31 +187,49 @@ def reachable(row, start, dest, departure_time, avg_speed=80):
       2. It is closer to the destination than the start location, preventing
          points located behind the direction of travel from being selected.
 
-    :param row: pd.Series - A row from the weather DataFrame containing at least the columns `time`, `lat`, and `lon`.
+    :param df: pd.Dataframe - A row from the weather DataFrame containing at least the columns `time`, `lat`, and `lon`.
     :param start: (tuple[float, float]) - Latitude and longitude of the departure location as `(lat, lon)`.
     :param dest: (tuple[float, float]) - Latitude and longitude of the destination as `(lat, lon)`.
-    :param departure_time: pd.Series - The timestamp of the departure location as `time`.
+    :param departure_time: pd.Timestamp - The timestamp of the departure location as `time`.
     :param avg_speed: (float, optional) - Assumed constant driving speed in km/h. Defaults to 80.
     :return: bool - `True` if the weather point is considered reachable at the given time, otherwise `False`.
     """
+    df = df.copy()
+    df["time"] = pd.to_datetime(df["time"])
+    departure_time = pd.to_datetime(departure_time)
+
+    # time diff in hours vectorized
+    df["hours"] = (df["time"] - departure_time).dt.total_seconds() / 3600
+
+    # remove future-negative times
+    df = df[df["hours"] >= 0]
+
+    df["time_bin"] = df["hours"].astype(int)
 
     start_to_dest = geodesic(start, dest).km
-    hours = (row["time"] - departure_time).total_seconds() / 3600
 
-    if hours < 0:
-        return False
-
-    radius = hours * avg_speed
-
-    point = (row["lat"], row["lon"])
-
-    dist_from_start = geodesic(start, point).km
-    dist_to_dest = geodesic(point, dest).km
-
-    return (
-        dist_from_start<= radius and
-        dist_to_dest < start_to_dest
+    # compute distances
+    df["dist_start"] = df.apply(
+        lambda r: geodesic(start, (r["lat"], r["lon"])).km,
+        axis=1
     )
+    df["dist_dest"] = df.apply(
+        lambda r: geodesic((r["lat"], r["lon"]), dest).km,
+        axis=1
+    )
+
+    # reachability constraints
+    df = df[df["dist_dest"] < start_to_dest]
+
+    # add 5% deviation
+    df["max_reach"] = df["hours"] * avg_speed * 1.05
+    df = df[df["dist_start"] <= df["max_reach"]]
+
+    # keep only earliest bin per location
+    idx = df.groupby(["lat", "lon"])["time_bin"].idxmin()
+    df = df.loc[idx].reset_index(drop=True)
+
+    return df
 
 
 def precipitation_regions(df, max_precip, spacing_deg):

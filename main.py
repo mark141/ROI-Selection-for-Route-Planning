@@ -71,7 +71,7 @@ def main():
         initial_roi=init_roi,
         constraints={"weather_constraint": weather_constraint},
         scenario=scenario,
-        mode=scenario
+        mode=scenario.constraints["mode"],
     )
     # default 5 runs
     # all steps are saved in the class roi_iterator

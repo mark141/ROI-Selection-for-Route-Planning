@@ -1,9 +1,10 @@
-from shapely.lib import unary_union
-
-from utils.geometry import reachable, haversine
-                            #, precipitation_regions, find_region, same_region, to_simple_polygon
-from shapely.geometry import box
+from pyproj import Transformer
+from utils.geometry import reachable, haversine#, precipitation_regions, find_region, same_region, to_simple_polygon
+from shapely.ops import unary_union, transform
+from shapely.geometry import box, Polygon, MultiPolygon, GeometryCollection, Point
 from datetime import datetime, timedelta
+import numpy as np
+import pandas as pd
 import math
 
 
@@ -27,7 +28,7 @@ class ROIIterator:
             )
         self.mode = mode
         self.iteration = 0
-        self.iteration_roi = initial_roi
+        self.iteration_roi = initial_roi.roi_df
         self.metadata = {
             "initial_roi": self.initial_roi,
             "constraints": self.constraints,
@@ -44,7 +45,7 @@ class ROIIterator:
         if self.mode == "departure":
             # filter weather constraint
             df = df[df["precipitation"] < threshold]
-            departure_time = self.scenario.departure_time
+            departure_time = self.scenario.constraints["departure_time"]
 
         elif self.mode == "timeframe":
             timeframes = self.generate_timeframes()
@@ -59,34 +60,43 @@ class ROIIterator:
             raise ValueError(f"Invalid mode '{self.mode}'. Expected 'timeframe' or 'departure'.")
 
         # depending on departure time use an approximation which points to keep
-        reachable_df = df[
-            df.apply(
-                reachable,
-                axis=1,
-                args=(
-                    self.scenario.start,
-                    self.scenario.goal,
-                    departure_time,
-                ),
-                avg_speed=80
-            )
-        ]
+        df["time"] = pd.to_datetime(df["time"])
+        reachable_df = reachable(
+            df,
+            self.scenario.start,
+            self.scenario.goal,
+            departure_time=departure_time,
+            avg_speed=80,
+        )
 
-        # build grid squares with 5% tolerance
-        side = self.constraints.weather_constraint.spacing * 1.05
+        # build grid squares with 25% tolerance
+        spacing_m = self.constraints["weather_constraint"].spacing
+        side = spacing_m * 1.25
         half = side / 2
 
-        cells = [
-            box(lon - half, lat - half, lon + half, lat + half)
-            for lat, lon in zip(reachable_df["lat"], reachable_df["lon"])
-        ]
+        # EPSG transformations
+        to_utm = Transformer.from_crs(
+            "EPSG:4326",
+            "EPSG:32632",
+            always_xy=True,
+        ).transform
+        to_wgs84 = Transformer.from_crs(
+            "EPSG:32632",
+            "EPSG:4326",
+            always_xy=True,
+        ).transform
+
+        cells = []
+        for lat, lon in zip(reachable_df["lat"], reachable_df["lon"]):
+            x, y = to_utm(lon, lat)
+            cells.append(box(x - half, y - half, x + half, y + half))
 
         if not cells:
             return None
 
         # merge
         merged = unary_union(cells)
-        return merged
+        return transform(to_wgs84, merged)
 
 
     def run_iterations(self, df=None, start_poly=None, n=5):
@@ -95,7 +105,7 @@ class ROIIterator:
         if start_poly is None:
             start_poly = self.iteration_roi
         if df is None:
-            df = self.constraints.weather_constraint.weather_df
+            df = self.constraints["weather_constraint"].weather_df
         roi = start_poly
         for i in range(n):
             iteration = i+1
@@ -103,12 +113,13 @@ class ROIIterator:
 
             new_roi = self.iterate(df, threshold)
 
-            roi = self._ensure_connected(new_roi)
-            if roi is None:
+            new_roi = self._ensure_connected(new_roi)
+            if new_roi is None:
                 print(f"Iteration {iteration} was not connected.")
                 break
             self.iteration += 1
-            self._update_roi(roi)
+            self._update_roi(new_roi)
+            roi = new_roi
         print(f"{self.iteration} iterations done.")
         return roi
 
@@ -128,18 +139,22 @@ class ROIIterator:
         }
 
     def _dynamic_threshold(self, i):
-        threshold = self.scenario.max_rain * (0.9 ** i)
+        threshold = self.scenario.constraints["max_rain"] * (0.9 ** i)
         return threshold
 
     def _ensure_connected(self, roi):
         """
         Keep only component containing A (and optionally B).
         """
-
-        polygons = getattr(roi, "geoms", [roi])
+        if isinstance(roi, (Polygon, MultiPolygon)):
+            polygons = getattr(roi, "geoms", [roi])
+        elif isinstance(roi, GeometryCollection):
+            polygons = list(roi.geoms)
+        else:
+            return None
 
         for poly in polygons:
-            if poly.covers(self.scenario.start) and poly.covers(self.scenario.goal):
+            if poly.covers(Point(self.scenario.start[::-1])) and poly.covers(Point(self.scenario.goal[::-1])):
                 return poly
 
         return None
