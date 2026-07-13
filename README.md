@@ -23,7 +23,7 @@ ROI-Selection-for-Route-Planning
 ├── pyproject.toml
 ├── main.py
 │
-├── core/
+├── interfaces/
 │   ├── __init__.py
 │   │
 │   ├── base/

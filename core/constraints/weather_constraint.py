@@ -2,7 +2,7 @@ import requests
 import geopandas as gpd
 import pandas as pd
 
-from core.base.constraint import Constraint
+from core.interfaces.constraint import Constraint
 from utils.geometry import grid_points_in_polygon
 from utils.dates import validate_date_range
 

@@ -1,4 +1,4 @@
-from core.base.roi_selector import ROISelector
+from core.interfaces.roi_selector import ROISelector
 from utils.geometry import build_oriented_rectangle
 
 import math

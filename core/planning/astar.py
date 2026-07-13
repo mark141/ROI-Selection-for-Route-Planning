@@ -3,7 +3,7 @@
 
 import networkx as nx
 
-from core.base.planner import Planner
+from core.interfaces.planner import Planner
 
 
 class AStarPlanner(Planner):

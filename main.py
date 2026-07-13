@@ -4,7 +4,7 @@ import pandas as pd
 
 from core.constraints.weather_constraint import WeatherConstraint
 from core.roi.roi import ROISelectorFactory
-from core.base.scenario import Scenario
+from core.interfaces.scenario import Scenario
 from core.roi.roi_iterator import ROIIterator
 from utils.geometry import reachable, to_simple_polygon
 from utils.visualization import plotter
@@ -89,12 +89,6 @@ def main():
     # use mechanic like to_simple_polygon to get roi in a single polygon without interiors
     if roi.interiors != 0:
         roi2 = to_simple_polygon(roi)
-    # print("ROI RESULT")
-    # print(roi)
-    # TODO: display ROI and basemap and start + end
-    #   optional: haversine graph
-    #   optional: initial_roi
-    #   optional: route
     # plot test
     reachable_df = reachable(
         df=weather_constraint.weather_df.copy(),
