@@ -4,15 +4,14 @@
 
 ### Abstract:
 
-This thesis presents a constraint-aware region of interest (ROI) selection method to improve 
-the efficiency and reliability of route planning. The approach incorporates dynamic environmental
-factors, using weather conditions as a representative example to demonstrate its extensibility
-to additional constraints. Unlike traditional methods that rely on fixed ROIs, the proposed
-approach dynamically adapts the search region based on real-time data. This enables the system
-to prioritize relevant areas while avoiding constraint-violating regions. The work focuses 
-on the design of adaptive ROI heuristics and their evaluation across diverse scenarios. A full 
-implementation of the method is provided. Its effectiveness is demonstrated through simulation 
-and performance analysis.
+Dynamic weather conditions can significantly affect route planning, yet many existing approaches rely on
+computationally intensive methods or large datasets. This thesis presents a lightweight preprocessing method for 
+adaptive region of interest (ROI) selection using precipitation forecasts. Starting from predefined baseline shapes, 
+the approach identifies suitable departure time windows and iteratively refines the search region by applying 
+decreasing precipitation thresholds while preserving spatial connectivity. The resulting ROI highlights 
+weather-favorable areas that can be supplied to existing routing APIs to reduce exposure to rainfall. By relying solely
+on weather forecast data, the proposed method remains computationally efficient, independent of historical data, and 
+easily adaptable as a preprocessing step for weather-aware route planning.
 
 
 ## Project Structure
