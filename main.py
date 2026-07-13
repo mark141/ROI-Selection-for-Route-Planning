@@ -15,7 +15,7 @@ def main():
     start = (52.5200, 13.4050)  # Berlin
     goal = (48.8566, 2.3522)  # Paris
 
-    # 2026-07-08 05:00
+    # has to be in the start_date and ebd_date timeframes
     departure_time = pd.Timestamp("2026-07-6 8:06")
 
     # https://www.dwd.de/DE/service/lexikon/Functions/glossar.html?lv2=101812&lv3=101906&utm_source=chatgpt.com
@@ -71,11 +71,12 @@ def main():
     # ROI generation/iteration
     # what it does?
     # class - takes start_roi & weather_constraints & scenario as input
-    # also need to declare if start-now or timeframe calcs should be done
+    # either start-now or timeframe based calculation
     # has functions:
     # - iterate - always does 1 iteration step, whereas the first iteration step is the initial generation
     # - run_iterations - runs multiple iteration steps or until failure
     # - helper functions that are getting called in the iterate function
+    # - stores every iteration step inside the class as metadata
     roi_iterator = ROIIterator(
         initial_roi=init_roi,
         constraints={"weather_constraint": weather_constraint},
@@ -85,7 +86,7 @@ def main():
     # default 5 runs - each run -0.1 precipitation
     # all steps are saved in the class roi_iterator
     roi = roi_iterator.run_iterations(n=10)
-    # TODO: use mechanic like to_simple_polygon to get roi in a single polygon
+    # use mechanic like to_simple_polygon to get roi in a single polygon without interiors
     if roi.interiors != 0:
         roi2 = to_simple_polygon(roi)
     # print("ROI RESULT")
@@ -121,7 +122,7 @@ def main():
         roi_iterator.threshhold
     )
 
-    # TODO: add routing and plot it as well
+    # TODO: add routing with roi and roi2 and plot it as well
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()
