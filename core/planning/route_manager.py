@@ -1,3 +1,5 @@
+# This is not part of the Thesis. It is a crude example for a RouteManager for a routing engine.
+
 class RouteManager:
 
     def __init__(self, routing_api):

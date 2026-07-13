@@ -1,25 +1,13 @@
 # geometry utility functions
+
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 import math
-from shapely.geometry import box, LineString, Polygon, Point
-from shapely.ops import nearest_points, unary_union, transform
+from shapely.geometry import LineString, Polygon, Point
+from shapely.ops import nearest_points, transform
 from pyproj import Transformer
-from typing import Tuple, List
 from geopy.distance import geodesic
-
-
-def interpolate_points(
-    start: Tuple[float, float],
-    goal: Tuple[float, float],
-    steps: int = 50
-) -> List[Tuple[float, float]]:
-
-    latitudes = np.linspace(start[0], goal[0], steps)
-    longitudes = np.linspace(start[1], goal[1], steps)
-
-    return list(zip(latitudes, longitudes))
 
 
 def grid_points_in_polygon(polygon, target_count):
@@ -175,168 +163,109 @@ def haversine(lat1, lon1, lat2, lon2) -> float:
     return r * c
 
 
-# use this with : reachable_df = df[df.apply(reachable, axis=1)]
-def reachable(df, start, dest, departure_time, avg_speed=80):
+def reachable(df, start, departure_time, avg_speed=80):
     """
-    Determine whether a weather point is reachable from the trip origin at
-    the given timestamp using a constant average driving speed.
+    Filter weather points to those that are expected to be reached at their corresponding weather timestamp.
 
-     A weather point is considered reachable if:
-      1. Its distance from the start location is less than or equal to the
-         maximum distance that could have been driven since `departure_time`.
-      2. It is closer to the destination than the start location, preventing
-         points located behind the direction of travel from being selected.
+    For each weather point, the geodesic distance from the start location is computed. Assuming a constant average
+    driving speed, an expected arrival time is assigned in one-hour intervals:
 
-    :param df: pd.Dataframe - A row from the weather DataFrame containing at least the columns `time`, `lat`, and `lon`.
-    :param start: (tuple[float, float]) - Latitude and longitude of the departure location as `(lat, lon)`.
-    :param dest: (tuple[float, float]) - Latitude and longitude of the destination as `(lat, lon)`.
-    :param departure_time: pd.Timestamp - The timestamp of the departure location as `time`.
-    :param avg_speed: (float, optional) - Assumed constant driving speed in km/h. Defaults to 80.
-    :return: bool - `True` if the weather point is considered reachable at the given time, otherwise `False`.
+    - Points within `avg_speed` km are assigned `departure_time`.
+    - Points between `avg_speed` and `2 * avg_speed` km are assigned departure_time + 1 hour`.
+    - Each additional `avg_speed` km increases the expected arrival time by one hour.
+
+    Only rows where the computed expected arrival time exactly matches the weather observation time are returned.
+
+    :param df: pd.DataFrame containing at least the columns `time`, `lat`, and `lon`.
+    :param start: Tuple `(lat, lon)` representing the departure location.
+    :param departure_time: Departure timestamp.
+    :param avg_speed: Assumed constant driving speed in km/h. Defaults to 80.
+    :return: pd.DataFrame containing only the weather points that are expected
+    to be reached at the corresponding observation time.
     """
     df = df.copy()
     df["time"] = pd.to_datetime(df["time"])
-    departure_time = pd.to_datetime(departure_time)
+    departure_time = pd.to_datetime(departure_time).round("h")
 
-    # time diff in hours vectorized
-    df["hours"] = (df["time"] - departure_time).dt.total_seconds() / 3600
-
-    # remove future-negative times
-    df = df[df["hours"] >= 0]
-
-    df["time_bin"] = df["hours"].astype(int)
-
-    start_to_dest = geodesic(start, dest).km
-
-    # compute distances
+    # compute distance
     df["dist_start"] = df.apply(
         lambda r: geodesic(start, (r["lat"], r["lon"])).km,
         axis=1
     )
-    df["dist_dest"] = df.apply(
-        lambda r: geodesic((r["lat"], r["lon"]), dest).km,
-        axis=1
-    )
 
-    # reachability constraints
-    df = df[df["dist_dest"] < start_to_dest]
+    # give each point an expected arrival time for discrete selection
+    hour_offset = np.ceil(df["dist_start"] / avg_speed).astype(int) - 1
+    hour_offset = hour_offset.clip(lower=0)
+    df["expected_time"] = departure_time + pd.to_timedelta(hour_offset, unit="h")
 
-    # add 5% deviation
-    df["max_reach"] = df["hours"] * avg_speed * 1.05
-    df = df[df["dist_start"] <= df["max_reach"]]
-
-    # keep only earliest bin per location
-    idx = df.groupby(["lat", "lon"])["time_bin"].idxmin()
-    df = df.loc[idx].reset_index(drop=True)
+    # only take weather data points that are reachable from our start location
+    df = df[df["expected_time"] == df["time"]]
 
     return df
 
 
-def precipitation_regions(df, max_precip, spacing_deg):
-    # keep only "good" weather cells
-    df = df[df["precipitation"] < max_precip].copy()
-
-    # increase spacing by 5 %
-    side = spacing_deg * 1.05
-    half = side / 2
-
-    # create one square per weather point
-    geometry = [
-        box(
-            lon - half,
-            lat - half,
-            lon + half,
-            lat + half,
-        )
-        for lat, lon in zip(df["lat"], df["lon"])
-    ]
-
-    gdf = gpd.GeoDataFrame(df, geometry=geometry, crs="EPSG:4326")
-
-    # merge touching/overlapping squares
-    merged = gdf.geometry.union_all()      # GeoPandas >=1.1
-    # alternatively: gdf.geometry.unary_union
-
-    return merged
-
-
-def find_region(regions, point):
+def to_simple_polygon(poly):
     """
-    Return the polygon containing the given point, or None if the point
-    is not contained in any region.
-
-    :param regions: Polygon | MultiPolygon
-        Connected regions.
-    :param point: tuple[float, float]
-        (lat, lon)
+    Convert a Polygon with holes into a Polygon with a single exterior ring
+    by connecting every hole to the exterior with a zero-width bridge.
     """
-    # (lon, lat)
-    point = Point(point[1], point[0])
 
-    polygons = getattr(regions, "geoms", [regions])
+    def _rotate_ring(coords, point):
+        """
+        Rotate a closed ring so that it starts at the vertex closest to `point`.
+        """
+        coords = list(coords[:-1])  # remove duplicate closing vertex
 
-    for poly in polygons:
-        if poly.covers(point):
-            return poly
-
-    return None
-
-
-def same_region(regions, point_a, point_b):
-    """
-    Return True if both points lie in the same connected region.
-
-    :param regions: Polygon | MultiPolygon
-        Connected precipitation regions.
-    :param point_a: tuple[float, float]
-        (lat, lon)
-    :param point_b: tuple[float, float]
-        (lat, lon)
-    :return: boolean
-    """
-    region = find_region(regions, point_a)
-
-    if region is None:
-        return False
-
-    return region.covers(Point(point_b[1], point_b[0]))
-
-
-def to_simple_polygon(poly, bridge_width):
-    """
-    Convert a polygon with holes into a simple polygon by connecting every
-    hole to the exterior using the smallest possible bridge.
-
-    Parameters
-    ----------
-    poly : shapely.Polygon
-    bridge_width : float
-        Width of the bridge (e.g. 0.1 * weather_grid_spacing).
-
-    Returns
-    -------
-    shapely.Polygon
-    """
-    result = poly
-
-    while result.interiors:
-
-        # take first remaining hole
-        hole = LineString(result.interiors[0])
-
-        # nearest points between hole and outer boundary
-        p_outer, p_hole = nearest_points(result.exterior, hole)
-
-        # create a narrow bridge
-        bridge = LineString([p_outer, p_hole]).buffer(
-            bridge_width / 2,
-            cap_style="square"
+        idx = min(
+            range(len(coords)),
+            key=lambda i: (coords[i][0] - point.x) ** 2 + (coords[i][1] - point.y) ** 2,
         )
 
-        # add the bridge to the polygon
-        result = unary_union([result, bridge])
+        rotated = coords[idx:] + coords[:idx]
+        rotated.append(rotated[0])
+        return rotated
 
-        # rebuild using only exterior
-        result = Polygon(result.exterior)
+    def _insert_point(ring, point):
+        """
+        Insert point as first vertex if it is not already there.
+        """
+        p = (point.x, point.y)
 
-    return result
+        if ring[0] != p:
+            ring = [p] + ring
+
+        return ring
+
+
+    exterior = list(poly.exterior.coords[:-1])
+
+    for interior in poly.interiors:
+
+        hole = LineString(interior)
+        outer = LineString(exterior + [exterior[0]])
+
+        p_outer, p_hole = nearest_points(outer, hole)
+
+        # rotate both rings so bridge endpoints become first vertices
+        ext = _rotate_ring(outer.coords, p_outer)
+        hol = _rotate_ring(interior.coords, p_hole)
+
+        ext = _insert_point(ext, p_outer)
+        hol = _insert_point(hol, p_hole)
+
+        # remove duplicated closing coordinate
+        ext = ext[:-1]
+        hol = hol[:-1]
+
+        # splice hole into exterior
+        exterior = (
+            ext[:1]
+            + hol
+            + [hol[0]]
+            + [ext[0]]
+            + ext[1:]
+        )
+
+    exterior.append(exterior[0])
+
+    return Polygon(exterior)

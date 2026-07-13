@@ -27,6 +27,9 @@ class ROIIterator:
                 f"Invalid mode '{mode}'. Expected 'timeframe' or 'departure'."
             )
         self.mode = mode
+        self.departure_time = None
+        # threshhold after the iterations
+        self.threshhold = None
         self.iteration = 0
         self.iteration_roi = initial_roi.roi_df
         self.metadata = {
@@ -43,28 +46,32 @@ class ROIIterator:
     def iterate(self, df, threshold):
         """Perform a single ROI refinement step."""
         if self.mode == "departure":
-            # filter weather constraint
-            df = df[df["precipitation"] < threshold]
-            departure_time = self.scenario.constraints["departure_time"]
+            if self.departure_time is None:
+                departure_time = self.scenario.constraints["departure_time"]
+            else:
+                departure_time = self.departure_time
 
         elif self.mode == "timeframe":
             timeframes = self.generate_timeframes()
-            # filter weather constraint
-            filtered = df[df["precipitation"] < threshold]
             # get the best timeframe based on precipitation sum in the timeframe
-            df, best_window = self._select_best_timeframe(filtered, timeframes)
+            df, best_window = self._select_best_timeframe(df, timeframes)
             # best_window is a (start, end) tuple
             departure_time = best_window[0]
+
+            # following interations are in the normal departure mode
+            self.mode = "departure"
+            self.departure_time = departure_time
 
         else:
             raise ValueError(f"Invalid mode '{self.mode}'. Expected 'timeframe' or 'departure'.")
 
+        # filter weather constraint
+        df = df[df["precipitation"] < threshold]
         # depending on departure time use an approximation which points to keep
         df["time"] = pd.to_datetime(df["time"])
         reachable_df = reachable(
             df,
             self.scenario.start,
-            self.scenario.goal,
             departure_time=departure_time,
             avg_speed=80,
         )
@@ -107,19 +114,26 @@ class ROIIterator:
         if df is None:
             df = self.constraints["weather_constraint"].weather_df
         roi = start_poly
+        mode = self.mode
         for i in range(n):
             iteration = i+1
             threshold = self._dynamic_threshold(i)
+            if threshold < 0.1:
+                print(f"Threshold is below {threshold}, stopping iteration {iteration}")
+                break
 
             new_roi = self.iterate(df, threshold)
-
+            # save iteration steps here already for validation
+            self.iteration += 1
+            self._update_roi(new_roi)
             new_roi = self._ensure_connected(new_roi)
             if new_roi is None:
                 print(f"Iteration {iteration} was not connected.")
                 break
-            self.iteration += 1
-            self._update_roi(new_roi)
             roi = new_roi
+            self.threshhold = threshold
+        # set old mode for
+        self.mode = mode
         print(f"{self.iteration} iterations done.")
         return roi
 
@@ -139,7 +153,7 @@ class ROIIterator:
         }
 
     def _dynamic_threshold(self, i):
-        threshold = self.scenario.constraints["max_rain"] * (0.9 ** i)
+        threshold = self.scenario.constraints["max_rain"] - (0.1 * i)
         return threshold
 
     def _ensure_connected(self, roi):
@@ -169,7 +183,7 @@ class ROIIterator:
         self.metadata["iteration"] = self.iteration
 
     @staticmethod
-    def _select_best_timeframe(self, df, timeframes):
+    def _select_best_timeframe(df, timeframes):
         """
         Select the best dataframe slice based on lowest total precipitation.
 
@@ -191,6 +205,7 @@ class ROIIterator:
         best_score = float("inf")
         best_df = None
         best_window = None
+        df["time"] = pd.to_datetime(df["time"])
 
         for start, end in timeframes:
             filtered = df[(df["time"] >= start) & (df["time"] <= end)]
@@ -215,8 +230,8 @@ class ROIIterator:
         travel_time_hours = math.ceil(haversine(
             self.scenario.start[0],
             self.scenario.start[1],
-            self.scenario.end[0],
-            self.scenario.end[1],
+            self.scenario.goal[0],
+            self.scenario.goal[1],
         ) / avg_speed)
 
         # ensure datetime
@@ -226,8 +241,6 @@ class ROIIterator:
         # round everything to full hour
         start_date = start_date.replace(minute=0, second=0, microsecond=0)
         end_date = end_date.replace(minute=0, second=0, microsecond=0)
-
-        delta = timedelta(hours=1)
 
         timeframes = []
 
@@ -240,6 +253,6 @@ class ROIIterator:
             timeframes.append(
                 (current, current + timedelta(hours=travel_time_hours))
             )
-            current += delta
+            current += timedelta(hours=1)
 
         return timeframes

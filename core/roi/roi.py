@@ -2,6 +2,7 @@ from core.base.roi_selector import ROISelector
 from utils.geometry import build_oriented_rectangle
 
 import math
+import numpy as np
 import geopandas as gpd
 from geopy.distance import geodesic
 from shapely.geometry import box, Polygon
@@ -71,9 +72,10 @@ class AlignedBoundingBoxROISelector(ROISelector):
         longitudinal_buffer = distance_m * buffer_pct
 
         # corridor width heuristic
-        width_m = max(
-            1000,
-            min(math.sqrt(distance_m) * 150, 50000)
+        width_m = np.clip(
+            distance_m * 0.25,
+            50000,
+            250000
         )
 
         self.roi_df = build_oriented_rectangle(

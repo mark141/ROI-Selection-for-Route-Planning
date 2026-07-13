@@ -1,54 +1,112 @@
+# plot visualization
+
+import geopandas as gpd
+import contextily as cx
 import matplotlib.pyplot as plt
+from shapely.geometry import Point
 
-fig, ax = plt.subplots(figsize=(8, 8))
 
-# Plot polygons
-for poly in getattr(roi, "geoms", [roi]):
-    x, y = poly.exterior.xy
-    ax.fill(x, y, alpha=0.3, edgecolor="black", facecolor="lightblue")
+def plotter(weather_gdf, init_roi, roi, start, goal, max_rain):
+    """
+    Plots the initial roi, the calculated roi, the points for the weather colored based on max rain precipitation,
+    the start and goal of the route.
+    """
+    weather_gdf = gpd.GeoDataFrame(
+        weather_gdf,
+        geometry=[Point(lon, lat) for lon, lat in zip(weather_gdf["lon"], weather_gdf["lat"])],
+        crs="EPSG:4326"
+    )
+    dry_weather = weather_gdf[weather_gdf["precipitation"] < max_rain]
+    wet_weather = weather_gdf[weather_gdf["precipitation"] >= max_rain]
+    # Convert to Web Mercator
+    dry_weather = dry_weather.to_crs(epsg=3857)
+    wet_weather = wet_weather.to_crs(epsg=3857)
+    init_roi = init_roi.to_crs(epsg=3857)
 
-# roi.plot(ax=ax, facecolor="lightblue", edgecolor="black", alpha=0.3)
+    # Convert ROI polygon
+    roi_gdf = gpd.GeoDataFrame(
+        geometry=[roi],
+        crs="EPSG:4326"
+    )
 
-# Plot weather points
-ax.scatter(
-    test_df["lon"],
-    test_df["lat"],
-    s=8,
-    color="red",
-    label="Weather points",
-)
+    roi_gdf = roi_gdf.to_crs(epsg=3857)
 
-# Plot start
-ax.scatter(
-    start[1], start[0],
-    color="green",
-    s=80,
-    marker="o",
-    label="Start",
-)
-ax.text(
-    start[1], start[0],
-    f"Start\n({start[0]:.4f}, {start[1]:.4f})",
-    color="green",
-)
+    # Start/goal points
+    start_gdf = gpd.GeoDataFrame(
+        geometry=[Point(start[1], start[0])],
+        crs="EPSG:4326"
+    ).to_crs(epsg=3857)
 
-# Plot goal
-ax.scatter(
-    goal[1], goal[0],
-    color="blue",
-    s=80,
-    marker="x",
-    label="Goal",
-)
-ax.text(
-    goal[1], goal[0],
-    f"Goal\n({goal[0]:.4f}, {goal[1]:.4f})",
-    color="blue",
-)
+    goal_gdf = gpd.GeoDataFrame(
+        geometry=[Point(goal[1], goal[0])],
+        crs="EPSG:4326"
+    ).to_crs(epsg=3857)
 
-ax.set_xlabel("Longitude")
-ax.set_ylabel("Latitude")
-ax.set_aspect("equal")
-ax.legend()
+    # Plot
+    fig, ax = plt.subplots(figsize=(10, 10))
 
-plt.show()
+    # ROI
+    roi_gdf.plot(
+        ax=ax,
+        facecolor="lightblue",
+        edgecolor="black",
+        alpha=0.3,
+        label="ROI",
+    )
+
+    # Init ROI
+    init_roi.plot(
+        ax=ax,
+        facecolor="yellow",
+        edgecolor="black",
+        alpha=0.1,
+        label="Init ROI"
+    )
+
+    # Dry weather points
+    if len(dry_weather) > 0:
+        dry_weather.plot(
+            ax=ax,
+            color="green",
+            markersize=12,
+            label=f"Precipitation in mm < {max_rain}"
+        )
+
+    # Wet weather points
+    if len(wet_weather) > 0:
+        wet_weather.plot(
+            ax=ax,
+            color="red",
+            markersize=12,
+            label=f"Precipitation in mm >= {max_rain}"
+        )
+
+    # Start
+    start_gdf.plot(
+        ax=ax,
+        color="green",
+        markersize=80,
+        marker="o",
+        label="Start"
+    )
+
+    # Goal
+    goal_gdf.plot(
+        ax=ax,
+        color="blue",
+        markersize=80,
+        marker="x",
+        label="Goal"
+    )
+
+    # Add basemap
+    cx.add_basemap(
+        ax,
+        source=cx.providers.OpenStreetMap.Mapnik,
+        zoom=8
+    )
+
+    ax.legend()
+    ax.set_axis_off()
+
+    plt.show()

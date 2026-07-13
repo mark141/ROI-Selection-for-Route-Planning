@@ -1,3 +1,6 @@
+# this would be part of the full routing engine and is not part of the Thesis
+# this is only an example of an Astar routing from networkx library
+
 import networkx as nx
 
 from core.base.planner import Planner

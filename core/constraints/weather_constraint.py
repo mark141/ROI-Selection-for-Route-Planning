@@ -30,10 +30,10 @@ class WeatherConstraint(Constraint):
         self.spacing = spacing
 
         # list of longitudes
-        lon_str = ",".join(str(pt.x) for pt in grid_df.geometry)
+        lon_str = ",".join(f"{pt.x:.5f}" for pt in grid_df.geometry)
 
         # list of latitudes
-        lat_str = ",".join(str(pt.y) for pt in grid_df.geometry)
+        lat_str = ",".join(f"{pt.y:.5f}" for pt in grid_df.geometry)
 
         url = "https://api.open-meteo.com/v1/forecast"
         params = {
@@ -85,8 +85,7 @@ class WeatherConstraint(Constraint):
 
         df = self.weather_df
 
-        # default value is 2 -> TODO: maybe use without?
-        max_rain = context.get("max_rain", 2)
+        max_rain = context.get("max_rain")
 
         distances = (df["lat"] - lat) ** 2 + (df["lon"] - lon) ** 2
         clostest_idx = distances.idxmin()
@@ -98,7 +97,7 @@ class WeatherConstraint(Constraint):
 
         return {
             "valid": valid,
-            "cost": rain,
+            "precipation": rain,
             "meta": {
                 "rain": rain,
                 "time": closest_row["time"],

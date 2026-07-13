@@ -59,7 +59,6 @@ ROI-Selection-for-Route-Planning
 │
 ├── utils/
 │   ├── __init__.py
-│   ├── logger.py
 │   ├── config.py
 │   ├── dates.py
 │   ├── geometry.py
@@ -76,36 +75,14 @@ ROI-Selection-for-Route-Planning
 │   ├── benchmark_02.py
 │   └── compare_roi_methods.py
 │
-├── tests/
-│   ├── __init__.py
-│   │
-│   ├── conftest.py
-│   ├── test_constraints.py
-│   ├── test_roi.py
-│   ├── test_planner.py
-│   └── test_simulation.py
-│
-└── docs/
-    └── architecture.md
+└──  tests/
+    ├── __init__.py
+    │
+    ├── conftest.py
+    ├── test_constraints.py
+    ├── test_roi.py
+    ├── test_planner.py
+    └── test_simulation.py
 ```
 
-## Implementation order
 
-1. Base classes
-2. Graph representation
-3. Simple static ROI
-4. Dynamic ROI
-5. Weather constraint
-6. Route planner integration
-7. Evaluation metrics
-8. Benchmark scenarios
-
-
-Pipeline:
-```mermaid
-flowchart TD
-    A[Scenario] --> B[Constraints]
-    B --> C[ROI Selection]
-    C --> D[Route Planning]
-    D --> E[Evaluation]
-```
