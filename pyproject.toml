@@ -7,7 +7,7 @@ maintainers = ["Markus Nagel <mar.nag@gmx.net>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.12,<4"
+python = ">=3.12"
 osmnx = "^2.0.6"
 matplotlib = "^3.10.7"
 contextily = "^1.6.2"
