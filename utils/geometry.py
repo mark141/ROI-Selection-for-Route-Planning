@@ -269,3 +269,45 @@ def to_simple_polygon(poly):
     exterior.append(exterior[0])
 
     return Polygon(exterior)
+
+
+def create_rain_barrier(
+        weather_df,
+        lat_min,
+        lat_max,
+        lon_min,
+        lon_max,
+        precipitation_value=100.0
+):
+    """
+    Creates an artificial precipitation barrier.
+
+    The barrier crosses the Berlin-Paris ROI and prevents
+    a valid connection between start and goal.
+
+    Parameters:
+        weather_df:
+            Weather dataframe containing lat/lon/precipitation.
+
+        lat_min/max:
+            Latitude range of the barrier.
+
+        lon_min/max:
+            Longitude range of the barrier.
+
+        precipitation_value:
+            Artificial precipitation value in mm.
+    """
+
+    df = weather_df.copy()
+
+    barrier = (
+        (df["lat"] >= lat_min)
+        & (df["lat"] <= lat_max)
+        & (df["lon"] >= lon_min)
+        & (df["lon"] <= lon_max)
+    )
+
+    df.loc[barrier, "precipitation"] = precipitation_value
+
+    return df

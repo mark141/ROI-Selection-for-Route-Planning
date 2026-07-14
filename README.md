@@ -21,7 +21,6 @@ ROI-Selection-for-Route-Planning
 ├── README.md
 ├── requirements.txt
 ├── pyproject.toml
-├── main.py
 │
 ├── core/
 │   ├── __init__.py
@@ -70,13 +69,10 @@ ROI-Selection-for-Route-Planning
 │   └── scenarios/
 │
 ├── experiments/
-│   ├── benchmark_01.py
-│   ├── benchmark_02.py
-│   └── compare_roi_methods.py
+│   └── scenarios.py
 │
 └──  tests/
     ├── __init__.py
-    │
     ├── conftest.py
     ├── test_constraints.py
     ├── test_roi.py

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from shapely.geometry import Point
 
 
-def plotter(weather_gdf, init_roi, roi, start, goal, max_rain):
+def plot_roi_result(weather_gdf, init_roi, roi, start, goal, max_rain):
     """
     Plots the initial roi, the calculated roi, the points for the weather colored based on max rain precipitation,
     the start and goal of the route.
@@ -69,7 +69,7 @@ def plotter(weather_gdf, init_roi, roi, start, goal, max_rain):
             ax=ax,
             color="green",
             markersize=12,
-            label=f"Precipitation in mm < {max_rain}"
+            label=f"Precipitation in mm < {max_rain:.2f}"
         )
 
     # Wet weather points
@@ -78,7 +78,7 @@ def plotter(weather_gdf, init_roi, roi, start, goal, max_rain):
             ax=ax,
             color="red",
             markersize=12,
-            label=f"Precipitation in mm >= {max_rain}"
+            label=f"Precipitation in mm >= {max_rain:.2f}"
         )
 
     # Start

@@ -28,8 +28,8 @@ class ROIIterator:
             )
         self.mode = mode
         self.departure_time = None
-        # threshhold after the iterations
-        self.threshhold = None
+        # threshold after the iterations
+        self.threshold = None
         self.iteration = 0
         self.iteration_roi = initial_roi.roi_df
         self.metadata = {
@@ -76,7 +76,7 @@ class ROIIterator:
             avg_speed=80,
         )
 
-        # build grid squares with 25% tolerance
+        # build grid squares with 25% tolerance - so they will merge with the unary_union
         spacing_m = self.constraints["weather_constraint"].spacing
         side = spacing_m * 1.25
         half = side / 2
@@ -118,8 +118,8 @@ class ROIIterator:
         for i in range(n):
             iteration = i+1
             threshold = self._dynamic_threshold(i)
-            if threshold < 0.1:
-                print(f"Threshold is below {threshold}, stopping iteration {iteration}")
+            if threshold <= 0:
+                print(f"Threshold is below 0 ({threshold}), stopping iteration {iteration}")
                 break
 
             new_roi = self.iterate(df, threshold)
@@ -131,7 +131,7 @@ class ROIIterator:
                 print(f"Iteration {iteration} was not connected.")
                 break
             roi = new_roi
-            self.threshhold = threshold
+            self.threshold = threshold
         # set old mode for
         self.mode = mode
         print(f"{self.iteration} iterations done.")
