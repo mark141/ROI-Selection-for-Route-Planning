@@ -79,6 +79,60 @@ ROI-Selection-for-Route-Planning
     ├── test_planner.py
     └── test_simulation.py
 ```
+# Installation
+
+The project uses **Poetry** for dependency management and virtual environment handling.
+
+## 1. Install Poetry
+
+Follow the official installation guide:
+
+https://python-poetry.org/docs/
+
+
+Verify the installation:
+
+```bash
+poetry --version
+```
+
+## 2. Clone the Repository
+
+```bash
+git clone https://github.com/mark141/ROI-Selection-for-Route-Planning.git
+cd ROI-Selection-for-Route-Planning
+```
+
+## 3. Install Dependencies
+
+Poetry automatically creates a virtual environment and installs all required packages defined in `pyproject.toml`.
+
+```bash
+poetry install
+```
+
+## 4. Configure API Keys
+
+Some functionality requires API credentials.
+
+Create the file
+
+```
+utils/config.py
+```
+
+and provide the required configuration values, for example:
+
+```python
+ORS_API_KEY = "YOUR_OPENROUTESERVICE_KEY"
+```
+
+The weather data is retrieved from the Open-Meteo API and does **not** require an API key.
+
+## 6. Running an Example
+
+The example scenarios used in the thesis can be individually imported and executed directly from Python.
+
 
 ## Usage Example
 
@@ -185,3 +239,14 @@ roi = roi_iterator.run_iterations(n=10)
 # suitable for external routing APIs
 if roi.interiors:
     roi = to_simple_polygon(roi)
+```
+
+## Limitations
+
+This project relies on the Open-Meteo Historical Forecast API for retrieving weather forecast data.
+
+- Historical forecast data is only available for a limited time window. At the time of implementation, requests are restricted to approximately **3 months before the current date** and **15 days after the current date**.
+- As a result, arbitrary historical experiments cannot be reproduced once the requested time period falls outside the API's supported range.
+- The weather data represents gridded numerical weather model output rather than observations from local weather stations. Consequently, localized weather phenomena may not be captured accurately.
+
+For unrestricted long-term historical analyses, the Open-Meteo Historical Weather API or another historical weather dataset should be used instead of the Historical Forecast API.
